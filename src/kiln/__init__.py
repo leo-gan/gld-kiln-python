@@ -6,7 +6,7 @@ from kiln.hashing import type_hash
 from kiln.schema import schema_from_json
 from kiln.tensor import decode_tensors, encode_tensors
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "KilnError",
