@@ -1,5 +1,7 @@
 # gld-kiln-python
 
+[Serialization](https://leo-gan.github.io/serialization/) is the hub for the theory, the history, and the benchmarks.
+
 A from-scratch Kiln codec for Python. The runtime and the code generator are Python. They do not wrap, link, or vendor a C, C++, or Rust Kiln library.
 
 `testdata/reference/kiln_ref.py` is a test oracle for Frozen values. It is not used at run time.
