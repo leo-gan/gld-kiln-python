@@ -10,6 +10,7 @@ from typing import Any
 
 from kiln.error import KilnError
 from kiln.hashing import type_hash
+from kiln.plan import compile_decode, compile_encode
 from kiln.tensor import CAP, HEADER, decode_tensors, encode_tensors
 
 _WIDTH = {
@@ -290,7 +291,89 @@ class Reader:
         return str(raw, "utf-8")
 
 
+_ENC_CACHE: dict[Any, Any] = {}
+_DEC_CACHE: dict[Any, Any] = {}
+
+
+def _schema_key(schema: tuple) -> Any:
+    kind = schema[0]
+    if kind == "struct":
+        return ("struct", tuple((name, _schema_key(field)) for name, field in schema[1]))
+    if kind in ("list", "opt", "dict"):
+        return (kind, _schema_key(schema[1]))
+    return (kind,)
+
+
+def _cached_encode(schema: tuple):
+    key = _schema_key(schema)
+    if key in _ENC_CACHE:
+        return _ENC_CACHE[key]
+    plan = compile_encode(schema)
+    if len(_ENC_CACHE) >= 128:
+        _ENC_CACHE.clear()
+    _ENC_CACHE[key] = plan
+    return plan
+
+
+def _cached_decode(schema: tuple, pod_arrays: bool = False):
+    key = (_schema_key(schema), pod_arrays)
+    if key in _DEC_CACHE:
+        return _DEC_CACHE[key]
+    plan = compile_decode(schema, pod_arrays=pod_arrays)
+    if len(_DEC_CACHE) >= 128:
+        _DEC_CACHE.clear()
+    _DEC_CACHE[key] = plan
+    return plan
+
+
+class Codec:
+    """Compiled pure-Python encoder/decoder bound to one schema."""
+
+    __slots__ = ("_schema", "_cap", "_standalone", "_pod_arrays", "_enc", "_dec")
+
+    def __init__(
+        self,
+        schema: tuple,
+        *,
+        cap: int = CAP,
+        standalone: bool = True,
+        pod_arrays: bool = False,
+    ) -> None:
+        self._schema = schema
+        self._cap = cap
+        self._standalone = standalone
+        self._pod_arrays = pod_arrays
+        self._enc = _cached_encode(schema)
+        self._dec = _cached_decode(schema, pod_arrays=pod_arrays)
+
+    def encode(self, value: Any) -> bytes:
+        enc = self._enc
+        if enc is not None:
+            return enc(value, self._cap)
+        return bytes(_writer().encode(self._schema, value, cap=self._cap))
+
+    def decode(self, buf: bytes | bytearray | memoryview) -> Any:
+        dec = self._dec
+        if dec is not None:
+            return dec(buf, self._cap, self._standalone)
+        return decode(self._schema, buf, cap=self._cap, standalone=self._standalone)
+
+
+def compile(
+    schema: tuple,
+    *,
+    cap: int = CAP,
+    standalone: bool = True,
+    pod_arrays: bool = False,
+) -> Codec:
+    """Compile a reusable `Codec` for `schema`."""
+    return Codec(schema, cap=cap, standalone=standalone, pod_arrays=pod_arrays)
+
+
 def encode(schema: tuple, value: Any, *, cap: int = CAP) -> bytes:
+    plan = _cached_encode(schema)
+    if plan is not None:
+        return plan(value, cap)
     return bytes(_writer().encode(schema, value, cap=cap))
 
 
@@ -299,6 +382,10 @@ def encode_framed(schema: tuple, value: Any, *, cap: int = CAP) -> bytes:
 
 
 def decode(schema: tuple, buf: bytes | memoryview, *, cap: int = CAP, standalone: bool = True) -> Any:
+    plan = _cached_decode(schema, False)
+    if plan is not None:
+        res = plan(buf, cap, standalone)
+        return res if standalone else res[0]
     view = buf if isinstance(buf, memoryview) else memoryview(buf)
     value, end = _read(schema, view, 0, cap, 0, standalone=False)
     if standalone and end != len(view):
