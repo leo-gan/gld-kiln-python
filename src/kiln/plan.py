@@ -226,9 +226,9 @@ def compile_encode(schema: tuple) -> Callable[[Any, int], bytes] | None:
                 tc = _ARRAY_CODE[ek]
                 lines.append(f"{indent}if {cv}:")
                 lines.append(f"{indent}    if type({lv}) is _array and {lv}.typecode == {tc!r}:")
-                lines.append(f"{indent}        ap({lv}.tobytes())")
+                lines.append(f"{indent}        ap({lv})")
                 lines.append(f"{indent}    else:")
-                lines.append(f"{indent}        ap(_array({tc!r}, {lv}).tobytes())")
+                lines.append(f"{indent}        ap(_array({tc!r}, {lv}))")
                 return
             if ek in _WIDTH:
                 ch = _ENC_FMT[ek]
@@ -268,6 +268,7 @@ def compile_decode(
         "_uI": _UNPACK_I,
         "_array": array.array,
         "_bytes": bytes,
+        "_mv": memoryview,
         "_bdec": bytes.decode,
         "_len": len,
         "_range": range,
@@ -408,7 +409,9 @@ def compile_decode(
                 lines.append(f"{indent}{av} = _array({tc!r})")
                 lines.append(f"{indent}if {cv}:")
                 lines.append(f"{indent}    {nb} = {cv} * {w}")
-                lines.append(f"{indent}    {av}.frombytes(buf[o : o + {nb}])")
+                lines.append(
+                    f"{indent}    {av}.frombytes(_mv(buf)[o : o + {nb}] if {nb} > 4096 else buf[o : o + {nb}])"
+                )
                 lines.append(f"{indent}    o += {nb}")
                 if pod_arrays:
                     lines.append(f"{indent}{dst} = {av}")
