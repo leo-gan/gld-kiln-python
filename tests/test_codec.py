@@ -78,6 +78,25 @@ def test_compiled_codec_pod_arrays_and_float_bits():
     assert got_list["values"] == list(tel["values"])
 
 
+def test_compiled_codec_large_pod_arrays():
+    tensor_schema = ("struct", [("rows", ("i32",)), ("cols", ("i32",)), ("values", ("list", ("f32",)))])
+    vals = array.array("f", (float(i) * 0.25 for i in range(4096)))
+    payload = {"rows": 64, "cols": 64, "values": vals}
+    codec_arr = compile_codec(tensor_schema, pod_arrays=True)
+    codec_list = compile_codec(tensor_schema, pod_arrays=False)
+
+    raw = codec_arr.encode(payload)
+    assert len(raw) == 12 + 4096 * 4
+    assert raw == encode(tensor_schema, {"rows": 64, "cols": 64, "values": list(vals)})
+    assert raw == codec_list.encode({"rows": 64, "cols": 64, "values": list(vals)})
+
+    got = codec_arr.decode(raw)
+    assert isinstance(got["values"], array.array)
+    assert got["values"].typecode == "f"
+    assert got["values"] == vals
+    assert codec_list.decode(raw)["values"] == list(vals)
+
+
 def test_compiled_codec_rejects_errors():
     str_codec = compile_codec(("str",))
     with pytest.raises(KilnError) as caught:
