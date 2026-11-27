@@ -1,17 +1,19 @@
 """Positional little-endian Kiln codec for Python."""
 
 from kiln.error import KilnError
-from kiln.frozen import Reader, Writer, decode, decode_framed, encode, encode_framed, min_size
+from kiln.frozen import Codec, Reader, Writer, compile, decode, decode_framed, encode, encode_framed, min_size
 from kiln.hashing import type_hash
 from kiln.schema import schema_from_json
 from kiln.tensor import decode_tensors, encode_tensors
 
-__version__ = "0.2.0"
+__version__ = "0.2.1"
 
 __all__ = [
+    "Codec",
     "KilnError",
     "Reader",
     "Writer",
+    "compile",
     "decode",
     "decode_framed",
     "decode_tensors",
